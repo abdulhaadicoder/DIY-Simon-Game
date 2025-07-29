@@ -1,6 +1,6 @@
 # DIY Simon Game (Cardboard )
 
-![TOP VIEWt](images/your_photo.jpg)
+
 
 ## What is This?
 A handmade Simon memory game using an Arduino, cardboard box, and homemade plastic buttons. No soldering required!
@@ -27,15 +27,12 @@ A handmade Simon memory game using an Arduino, cardboard box, and homemade plast
 3. Connect buttons, LEDs, and other components as shown above.
 4. Secure wires with tape or glue if no soldering.
 
-## Code
 
 
-## Images
-![TOP VIEWt](images/your_photo.jpg)
-![Inside Wiring](images/inside.jpg)
 
-## (Optional) Demo Video
-If you have one, upload or link it.
+
+
+
 
 ## License
 (MIT License or Creative Commons recommended for sharing)
