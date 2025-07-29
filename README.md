@@ -1,4 +1,4 @@
-# DIY Simon Game (Cardboard + Casein Plastic)
+# DIY Simon Game (Cardboard )
 
 ![Finished Project](images/final_box.jpg)
 
@@ -22,13 +22,13 @@ A handmade Simon memory game using an Arduino, cardboard box, and homemade plast
 | OLED SDA       | A4          | I2C Display          |
 
 ## How to Build
-1. Make buttons from milk plastic (casein) using vinegar.
+1. Make buttons from cardboard 
 2. Cut holes in the cardboard box for buttons and display.
 3. Connect buttons, LEDs, and other components as shown above.
 4. Secure wires with tape or glue if no soldering.
 
 ## Code
-Upload the `simon_game.ino` Arduino file.
+
 
 ## Images
 ![Top View](images/top_view.jpg)
