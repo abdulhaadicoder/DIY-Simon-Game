@@ -1,0 +1,412 @@
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+
+// --- OLED SETUP ---
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+#define OLED_RESET   -1
+#define SCREEN_ADDR  0x3C
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
+// --- PIN ASSIGNMENTS ---
+#define RED_LED      2
+#define GREEN_LED    3
+#define BLUE_LED     4
+#define YELLOW_LED   5
+
+#define RED_BTN      7    // move left / P2 select
+#define GREEN_BTN    9    // confirm
+#define BLUE_BTN     10   // move right / P1 select
+#define YELLOW_BTN   8    // unused in menus
+
+#define BUZZER       11
+
+// --- GAME STATE ---
+int pattern[100];
+int level;
+int p1Score, p2Score;
+bool twoPlayerMode;
+
+// --- SETUP ---
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(RED_LED,    OUTPUT);
+  pinMode(GREEN_LED,  OUTPUT);
+  pinMode(BLUE_LED,   OUTPUT);
+  pinMode(YELLOW_LED, OUTPUT);
+
+  pinMode(RED_BTN,    INPUT_PULLUP);
+  pinMode(GREEN_BTN,  INPUT_PULLUP);
+  pinMode(BLUE_BTN,   INPUT_PULLUP);
+  pinMode(YELLOW_BTN, INPUT_PULLUP);
+
+  pinMode(BUZZER, OUTPUT);
+
+  if (!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDR)) {
+    while (1); // fatal
+  }
+  display.clearDisplay();
+  display.display();
+
+  randomSeed(analogRead(A0));
+
+  runIntro();
+  chooseMode();
+  if (twoPlayerMode)   runTwoPlayer();
+  else                 runOnePlayer();
+}
+
+void loop() {}
+
+// --- Celebration Flash (all LEDs + buzzer) ---
+void celebrationFlash() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BLUE_LED, HIGH);
+    digitalWrite(YELLOW_LED, HIGH);
+    tone(BUZZER, 880, 120);
+    delay(120);
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+    digitalWrite(YELLOW_LED, LOW);
+    noTone(BUZZER);
+    delay(100);
+  }
+}
+
+// --- INTRO ANIMATION ---
+void runIntro() {
+  for (int i = 0; i < display.height()/2; i += 3) {
+    display.fillRect(i, i, display.width()-2*i, display.height()-2*i, SSD1306_INVERSE);
+    display.display();
+    delay(30);
+  }
+  display.clearDisplay();
+  display.setTextSize(3);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(20, 20);
+  display.print("SIMON");
+  display.display();
+  tone(BUZZER, 440, 200); delay(200);
+  tone(BUZZER, 660, 200); delay(200);
+  tone(BUZZER, 880, 300); delay(300);
+  delay(500);
+  display.clearDisplay();
+  for (int i = 0; i < display.height()/2; i += 3) {
+    display.fillRect(i, i, display.width()-2*i, display.height()-2*i, SSD1306_INVERSE);
+    display.display();
+    delay(20);
+  }
+}
+//mode selection
+
+void chooseMode() {
+  display.clearDisplay();
+  display.setTextSize(1);
+
+  int selection = 0; // 0 = left (1P), 1 = right (2P)
+
+  while (true) {
+    // Draw the options
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setCursor(4, 27);
+    display.print("1 PLAYER");
+    display.setCursor(80, 27);
+    display.print("2 PLAYER");
+
+    // Draw the rectangle selector
+    // Width and position chosen to fit each text
+    display.drawRect(selection == 0 ? 0 : 76, 25, 56, 14, SSD1306_WHITE);
+
+    display.display();
+
+    // Move selector based on button pressed
+    if (digitalRead(RED_BTN) == LOW) {
+      selection = 0; // Move left
+      tone(BUZZER, 523, 100);
+      delay(300); // Debounce
+    }
+    else if (digitalRead(BLUE_BTN) == LOW) {
+      selection = 1; // Move right
+      tone(BUZZER, 523, 100);
+      delay(300);
+    }
+    else if (digitalRead(GREEN_BTN) == LOW) {
+      // Confirm selection
+      tone(BUZZER, 659, 200);
+      twoPlayerMode = (selection == 1);
+      delay(300);
+      break;
+    }
+    delay(10); // Loop delay
+  }
+  display.clearDisplay();
+}
+
+
+// --- 1-PLAYER GAME ---
+void runOnePlayer() {
+  level = 0;
+  while (true) {
+    pattern[level] = random(0,4);
+    level++;
+    showLevel(level);
+    if (!playerTurn(level)) {
+      showGameOver1P();
+      return;
+    }
+    p1Score = level;
+    celebrationFlash();
+    delay(400);
+  }
+}
+
+// --- 2-PLAYER GAME with P1 LOSES MESSAGE ---
+void runTwoPlayer() {
+  // Player 1 turn
+  p1Score = 0;
+  level = 0;
+  while (true) {
+    pattern[level] = random(0,4);
+    level++;
+    showLevel(level);
+    if (!playerTurn(level)) {
+      // Show P1 loses screen
+      display.clearDisplay();
+      display.setTextSize(2);
+      display.setCursor(22, 18);
+      display.print("P1 LOSES!");
+      display.display();
+      tone(BUZZER, 180, 400);
+      delay(1200);
+      break;
+    }
+    p1Score++;
+    celebrationFlash();
+    delay(400);
+  }
+  // Player 2 turn
+  p2Score = 0;
+  level = 0;
+  while (true) {
+    pattern[level] = random(0,4);
+    level++;
+    showLevel(level);
+    if (!playerTurn(level)) {
+      // Optionally show "P2 LOSES!" screen here
+      break;
+    }
+    p2Score++;
+    celebrationFlash();
+    delay(400);
+  }
+  showGameOver2P();
+}
+
+// --- SHOW LEVEL & PATTERN (BIG, CENTERED) ---
+void showLevel(int lvl) {
+  display.clearDisplay();
+
+  // "LEVEL" at top
+  display.setTextSize(1);
+  display.setCursor(38, 5);
+  display.print("LEVEL");
+
+  // Big, centered number
+  display.setTextSize(4);
+  int16_t x;
+  if (lvl < 10) x = 52;           // single digit
+  else if (lvl < 100) x = 34;     // two digits
+  else x = 10;                    // three digits
+
+  display.setCursor(x, 22);
+  display.print(lvl);
+  display.display();
+  delay(900);
+
+  for (int i=0; i<lvl; i++) {
+    flash(pattern[i]);
+    delay(300);
+  }
+}
+
+// --- PLAYER INPUT ---
+bool playerTurn(int lvl) {
+  for (int i=0; i<lvl; i++) {
+    int btn = waitButton();
+    flash(btn);
+    if (btn != pattern[i]) return false;
+  }
+  return true;
+}
+
+int waitButton() {
+  while (true) {
+    // Check each button
+    if (digitalRead(RED_BTN) == LOW) {
+      delay(50);                // debounce delay
+      if (digitalRead(RED_BTN) == LOW) {  // confirm still pressed
+        // Wait until button is released
+        while (digitalRead(RED_BTN) == LOW) { delay(10); }
+        delay(50);              // debounce release delay
+        return 0;               // RED button pressed
+      }
+    }
+    if (digitalRead(BLUE_BTN) == LOW) {
+      delay(50);
+      if (digitalRead(BLUE_BTN) == LOW) {
+        while (digitalRead(BLUE_BTN) == LOW) { delay(10); }
+        delay(50);
+        return 1;               // BLUE button pressed
+      }
+    }
+    if (digitalRead(YELLOW_BTN) == LOW) {
+      delay(50);
+      if (digitalRead(YELLOW_BTN) == LOW) {
+        while (digitalRead(YELLOW_BTN) == LOW) { delay(10); }
+        delay(50);
+        return 2;               // YELLOW button pressed
+      }
+    }
+    if (digitalRead(GREEN_BTN) == LOW) {
+      delay(50);
+      if (digitalRead(GREEN_BTN) == LOW) {
+        while (digitalRead(GREEN_BTN) == LOW) { delay(10); }
+        delay(50);
+        return 3;               // GREEN button pressed
+      }
+    }
+    // Small delay to avoid continuous tight loop
+    delay(5);
+  }
+}
+
+
+// --- FLASH LED + TONE ---
+const int freqs[4] = {261, 329, 392, 523};
+const int leds[4]  = {RED_LED, BLUE_LED, YELLOW_LED, GREEN_LED};
+void flash(int idx) {
+  digitalWrite(leds[idx], HIGH);
+  tone(BUZZER, freqs[idx], 200);
+  delay(200);
+  digitalWrite(leds[idx], LOW);
+  noTone(BUZZER);
+}
+
+// --- 1P GAME OVER with Scoreboard & LED Show ---
+void showGameOver1P() {
+  display.clearDisplay();
+  display.setTextSize(2);
+  display.setCursor(30,10);
+  display.print("SCORE");
+  display.setTextSize(4);
+  display.setCursor(40,32);
+  display.print(p1Score-1);
+  display.display();
+
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BLUE_LED, HIGH);
+    digitalWrite(YELLOW_LED, HIGH);
+    tone(BUZZER, 220 + i*100, 100);
+    delay(120);
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+    digitalWrite(YELLOW_LED, LOW);
+    delay(100);
+  }
+  delay(2000);
+  chooseMode();
+  if (twoPlayerMode) runTwoPlayer();
+  else runOnePlayer();
+}
+
+// --- 2P GAME OVER: BIG "TABLE" STYLE SCOREBOARD ---
+void showGameOver2P() {
+  display.clearDisplay();
+
+  // Header
+  display.setTextSize(2);
+  display.setCursor(10, 0);
+  display.print("P1");
+  display.setCursor(74, 0);
+  display.print("P2");
+  
+  display.setTextSize(4); // Big font for scores
+  // P1 Score (left)
+  if (p1Score < 10)
+    display.setCursor(16, 21);
+  else if (p1Score < 100)
+    display.setCursor(0, 21);
+  else
+    display.setCursor(-8, 21);
+  display.print(p1Score);
+
+  // P2 Score (right)
+  if (p2Score < 10)
+    display.setCursor(80, 21);
+  else if (p2Score < 100)
+    display.setCursor(66, 21);
+  else
+    display.setCursor(48, 21);
+  display.print(p2Score);
+
+  display.display();
+  delay(1800);
+
+  // LED + Fill flash
+  for (int i = 0; i < 5; i++) {
+    digitalWrite(RED_LED, HIGH);
+    digitalWrite(GREEN_LED, HIGH);
+    digitalWrite(BLUE_LED, HIGH);
+    digitalWrite(YELLOW_LED, HIGH);
+    display.invertDisplay(true);
+    tone(BUZZER, 660, 80);
+    delay(80);
+    digitalWrite(RED_LED, LOW);
+    digitalWrite(GREEN_LED, LOW);
+    digitalWrite(BLUE_LED, LOW);
+    digitalWrite(YELLOW_LED, LOW);
+    display.invertDisplay(false);
+    noTone(BUZZER);
+    delay(70);
+  }
+
+  display.clearDisplay();
+
+  // Winner banner
+  bool p1win = p1Score > p2Score;
+  display.setTextSize(2);
+  display.setCursor(20,5);
+  display.print("WINNER");
+  display.setTextSize(4);
+  if (p1Score == p2Score) {
+    display.setTextSize(2);
+    display.setCursor(34,30);
+    display.print("DRAW");
+  } else {
+    display.setCursor(38,30);
+    display.print(p1win ? "P1" : "P2");
+  }
+  display.display();
+
+  // Victory melody
+  if (p1Score != p2Score) {
+    tone(BUZZER, 262,150); delay(200);
+    tone(BUZZER, 330,150); delay(200);
+    tone(BUZZER, 392,300); delay(300);
+  } else {
+    tone(BUZZER, 220,500); delay(500);
+  }
+  delay(2000);
+  chooseMode();
+  if (twoPlayerMode) runTwoPlayer();
+  else runOnePlayer();
+}
